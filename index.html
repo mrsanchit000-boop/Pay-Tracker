@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f7fa">
+  <title>Delivery Pay &amp; Expenses Tracker</title>
+  <!-- Link to the web app manifest. This enables installation on mobile devices. -->
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* Base styles */
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.4;
+      margin: 0;
+      padding: 16px;
+      background-color: #f5f7fa;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-top: 0;
+      margin-bottom: 10px;
+    }
+    p {
+      max-width: 700px;
+      margin: 0 auto 20px;
+      text-align: center;
+    }
+    table {
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      text-align: center;
+    }
+    th {
+      background-color: #e9eef5;
+    }
+    .week-summary td {
+      background-color: #fff7e6;
+      font-weight: bold;
+    }
+    .week-summary td:first-child {
+      text-align: left;
+      padding-left: 10px;
+    }
+    input[type="number"] {
+      width: 80px;
+    }
+    .summary {
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 10px;
+      background-color: #eef5ff;
+      border: 1px solid #c0d1eb;
+      border-radius: 4px;
+    }
+    .controls {
+      max-width: 100%;
+      margin: 0 auto 20px;
+      text-align: center;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+    }
+    .controls label {
+      margin-right: 4px;
+      font-weight: bold;
+    }
+    .controls select, .controls input[type="number"] {
+      padding: 4px 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Monthly Pay Calculator</h1>
+  <p>
+    This app helps delivery drivers track their deliveries, returns, expenses and net income for each day of a 30‑day month. Adjust your per‑package rate, set the first day of the month, and then enter your numbers. Weekly and monthly totals update automatically. Your data persists in your browser, so you can return later and continue.
+  </p>
+  <div class="controls">
+    <div>
+      <label for="startDay">First day of the month:</label>
+      <select id="startDay">
+        <option value="0">Monday</option>
+        <option value="1">Tuesday</option>
+        <option value="2">Wednesday</option>
+        <option value="3">Thursday</option>
+        <option value="4">Friday</option>
+        <option value="5">Saturday</option>
+        <option value="6">Sunday</option>
+      </select>
+    </div>
+    <div>
+      <label for="ratePerPackage">Rate per package ($):</label>
+      <input type="number" id="ratePerPackage" step="0.01" min="0" value="1.40">
+    </div>
+  </div>
+  <table id="payTable">
+    <caption style="caption-side: top; font-weight: bold; font-size: 1.1em; padding: 6px;">Expenses</caption>
+    <thead>
+      <!-- Group header row -->
+      <tr>
+        <th rowspan="2">Date</th>
+        <th rowspan="2">Day of Week</th>
+        <th rowspan="2">Delivered</th>
+        <th rowspan="2">Returns</th>
+        <th rowspan="2">Total Packages</th>
+        <th rowspan="2">Daily Pay ($)</th>
+        <th colspan="3">Expenses</th>
+        <th rowspan="2">Net Income ($)</th>
+      </tr>
+      <!-- Expense category header row -->
+      <tr>
+        <th>Fuel ($)</th>
+        <th>Food ($)</th>
+        <th>Other ($)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Rows and weekly summary rows inserted by script -->
+    </tbody>
+    <tfoot>
+      <tr class="week-summary">
+        <td>Monthly Total</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td id="monthlyPackages">0</td>
+        <td id="monthlyPay">$0.00</td>
+        <td id="monthlyFuel">$0.00</td>
+        <td id="monthlyFood">$0.00</td>
+        <td id="monthlyOther">$0.00</td>
+        <td id="monthlyNet">$0.00</td>
+      </tr>
+    </tfoot>
+  </table>
+  <div class="summary">
+    <p><strong>Tip:</strong> Adjust the first day and rate above. Enter your daily counts and expenses. The table updates automatically and data is saved locally on your device.</p>
+  </div>
+  <script>
+    // Constants
+    const daysInMonth = 30; // 30 days for a typical month (September used as example)
+    let ratePerPackage = 1.40;
+    const daysOfWeek = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+
+    // DOM elements
+    const tableBody = document.querySelector('#payTable tbody');
+    const monthlyPackagesCell = document.getElementById('monthlyPackages');
+    const monthlyPayCell = document.getElementById('monthlyPay');
+    const startDaySelect = document.getElementById('startDay');
+    const rateInput = document.getElementById('ratePerPackage');
+
+    // Data structures
+    const dayRows = [];
+    let weekSummaryRows = [];
+    let weekBoundaries = [];
+
+    // Initialize rate from input
+    ratePerPackage = parseFloat(rateInput.value) || 0;
+    rateInput.addEventListener('input', function() {
+      ratePerPackage = parseFloat(this.value) || 0;
+      updateTotals();
+      saveData();
+    });
+
+    // Create table rows for days 1–30
+    for (let day = 1; day <= daysInMonth; day++) {
+      const row = document.createElement('tr');
+
+      // Date cell (e.g., Sep 1, Sep 2)
+      const dateCell = document.createElement('td');
+      dateCell.textContent = `Sep ${day}`;
+      row.appendChild(dateCell);
+
+      // Day-of-week cell (to be filled later)
+      const dowCell = document.createElement('td');
+      row.appendChild(dowCell);
+
+      // Delivered input
+      const deliveredCell = document.createElement('td');
+      const deliveredInput = document.createElement('input');
+      deliveredInput.type = 'number';
+      deliveredInput.min = '0';
+      deliveredInput.addEventListener('input', updateTotals);
+      deliveredCell.appendChild(deliveredInput);
+      row.appendChild(deliveredCell);
+
+      // Returns input
+      const returnsCell = document.createElement('td');
+      const returnsInput = document.createElement('input');
+      returnsInput.type = 'number';
+      returnsInput.min = '0';
+      returnsInput.addEventListener('input', updateTotals);
+      returnsCell.appendChild(returnsInput);
+      row.appendChild(returnsCell);
+
+      // Total packages cell
+      const totalCell = document.createElement('td');
+      totalCell.textContent = '0';
+      row.appendChild(totalCell);
+
+      // Daily pay cell
+      const payCell = document.createElement('td');
+      payCell.textContent = '$0.00';
+      row.appendChild(payCell);
+
+      // Fuel expense input
+      const fuelCell = document.createElement('td');
+      const fuelInput = document.createElement('input');
+      fuelInput.type = 'number';
+      fuelInput.min = '0';
+      fuelInput.step = '0.01';
+      fuelInput.addEventListener('input', updateTotals);
+      fuelCell.appendChild(fuelInput);
+      row.appendChild(fuelCell);
+
+      // Food expense input
+      const foodCell = document.createElement('td');
+      const foodInput = document.createElement('input');
+      foodInput.type = 'number';
+      foodInput.min = '0';
+      foodInput.step = '0.01';
+      foodInput.addEventListener('input', updateTotals);
+      foodCell.appendChild(foodInput);
+      row.appendChild(foodCell);
+
+      // Other expense input
+      const otherCell = document.createElement('td');
+      const otherInput = document.createElement('input');
+      otherInput.type = 'number';
+      otherInput.min = '0';
+      otherInput.step = '0.01';
+      otherInput.addEventListener('input', updateTotals);
+      otherCell.appendChild(otherInput);
+      row.appendChild(otherCell);
+
+      // Net income cell
+      const netCell = document.createElement('td');
+      netCell.textContent = '$0.00';
+      row.appendChild(netCell);
+
+      tableBody.appendChild(row);
+      dayRows.push(row);
+    }
+
+    // Assign day-of-week names and create weekly summary rows
+    function updateDayNames() {
+      const startIndex = parseInt(startDaySelect.value) || 0;
+      dayRows.forEach((row, idx) => {
+        const dayIndex = (startIndex + idx) % 7;
+        row.children[1].textContent = daysOfWeek[dayIndex];
+      });
+      rebuildWeekSummaries(startIndex);
+      saveData();
+    }
+
+    // Update totals for each row, weekly and monthly
+    function updateTotals() {
+      let monthlyTotalPackages = 0;
+      let monthlyTotalPay = 0;
+      let monthlyTotalFuel = 0;
+      let monthlyTotalFood = 0;
+      let monthlyTotalOther = 0;
+      let monthlyTotalNet = 0;
+      // Update each day row
+      dayRows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        const delivered = parseFloat(inputs[0].value) || 0;
+        const returns = parseFloat(inputs[1].value) || 0;
+        const fuel = parseFloat(inputs[2].value) || 0;
+        const food = parseFloat(inputs[3].value) || 0;
+        const other = parseFloat(inputs[4].value) || 0;
+        const totalPackages = delivered + returns;
+        const pay = totalPackages * ratePerPackage;
+        const net = pay - (fuel + food + other);
+        // Update row cells
+        row.children[4].textContent = totalPackages.toString();
+        row.children[5].textContent = '$' + pay.toFixed(2);
+        row.children[9].textContent = '$' + net.toFixed(2);
+        // Update monthly totals
+        monthlyTotalPackages += totalPackages;
+        monthlyTotalPay += pay;
+        monthlyTotalFuel += fuel;
+        monthlyTotalFood += food;
+        monthlyTotalOther += other;
+        monthlyTotalNet += net;
+      });
+      // Compute weekly totals based on boundaries
+      let startIdx = 0;
+      weekBoundaries.forEach((endIdx, wIdx) => {
+        let weeklyPackages = 0;
+        let weeklyPay = 0;
+        let weeklyFuel = 0;
+        let weeklyFood = 0;
+        let weeklyOther = 0;
+        let weeklyNet = 0;
+        for (let i = startIdx; i <= endIdx; i++) {
+          const row = dayRows[i];
+          const inputs = row.querySelectorAll('input');
+          const delivered = parseFloat(inputs[0].value) || 0;
+          const returns = parseFloat(inputs[1].value) || 0;
+          const fuel = parseFloat(inputs[2].value) || 0;
+          const food = parseFloat(inputs[3].value) || 0;
+          const other = parseFloat(inputs[4].value) || 0;
+          const packages = delivered + returns;
+          const pay = packages * ratePerPackage;
+          const net = pay - (fuel + food + other);
+          weeklyPackages += packages;
+          weeklyPay += pay;
+          weeklyFuel += fuel;
+          weeklyFood += food;
+          weeklyOther += other;
+          weeklyNet += net;
+        }
+        const summaryRow = weekSummaryRows[wIdx];
+        if (summaryRow) {
+          summaryRow.children[4].textContent = weeklyPackages.toString();
+          summaryRow.children[5].textContent = '$' + weeklyPay.toFixed(2);
+          summaryRow.children[6].textContent = '$' + weeklyFuel.toFixed(2);
+          summaryRow.children[7].textContent = '$' + weeklyFood.toFixed(2);
+          summaryRow.children[8].textContent = '$' + weeklyOther.toFixed(2);
+          summaryRow.children[9].textContent = '$' + weeklyNet.toFixed(2);
+        }
+        startIdx = endIdx + 1;
+      });
+      // Update monthly totals row
+      monthlyPackagesCell.textContent = monthlyTotalPackages;
+      monthlyPayCell.textContent = '$' + monthlyTotalPay.toFixed(2);
+      document.getElementById('monthlyFuel').textContent = '$' + monthlyTotalFuel.toFixed(2);
+      document.getElementById('monthlyFood').textContent = '$' + monthlyTotalFood.toFixed(2);
+      document.getElementById('monthlyOther').textContent = '$' + monthlyTotalOther.toFixed(2);
+      document.getElementById('monthlyNet').textContent = '$' + monthlyTotalNet.toFixed(2);
+      // Save data
+      saveData();
+    }
+
+    // Save data to localStorage (including rate)
+    function saveData() {
+      const data = [];
+      dayRows.forEach(row => {
+        const inputs = row.querySelectorAll('input');
+        data.push({
+          delivered: inputs[0].value,
+          returns: inputs[1].value,
+          fuel: inputs[2] ? inputs[2].value : '',
+          food: inputs[3] ? inputs[3].value : '',
+          other: inputs[4] ? inputs[4].value : ''
+        });
+      });
+      const saveObject = {
+        startDay: startDaySelect.value,
+        data: data,
+        rate: ratePerPackage
+      };
+      try {
+        localStorage.setItem('deliveryPayData', JSON.stringify(saveObject));
+      } catch (e) {
+        // LocalStorage may be unavailable
+      }
+    }
+
+    // Load data from localStorage
+    function loadData() {
+      try {
+        const saved = localStorage.getItem('deliveryPayData');
+        if (!saved) return;
+        const obj = JSON.parse(saved);
+        if (obj.startDay !== undefined) {
+          startDaySelect.value = obj.startDay;
+        }
+        if (obj.rate !== undefined) {
+          ratePerPackage = parseFloat(obj.rate) || 0;
+          rateInput.value = obj.rate;
+        }
+        if (Array.isArray(obj.data)) {
+          obj.data.forEach((entry, idx) => {
+            const row = dayRows[idx];
+            if (!row) return;
+            const inputs = row.querySelectorAll('input');
+            inputs[0].value = entry.delivered || '';
+            inputs[1].value = entry.returns || '';
+            if (inputs[2]) inputs[2].value = entry.fuel || '';
+            if (inputs[3]) inputs[3].value = entry.food || '';
+            if (inputs[4]) inputs[4].value = entry.other || '';
+          });
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+    }
+
+    // Rebuild weekly summary rows based on the starting day index
+    function rebuildWeekSummaries(startIndex) {
+      // Remove existing summary rows
+      weekSummaryRows.forEach(row => row.remove());
+      weekSummaryRows = [];
+      weekBoundaries = [];
+      // Determine boundaries: index of last day of each week
+      for (let i = 0; i < daysInMonth; i++) {
+        const idx = (startIndex + i) % 7;
+        if (idx === 6 || i === daysInMonth - 1) {
+          weekBoundaries.push(i);
+        }
+      }
+      weekBoundaries.forEach((boundaryIndex, wIdx) => {
+        const summaryRow = document.createElement('tr');
+        summaryRow.classList.add('week-summary');
+        // 10 cells to match the table columns
+        for (let c = 0; c < 10; c++) {
+          summaryRow.appendChild(document.createElement('td'));
+        }
+        summaryRow.children[0].textContent = `Week ${wIdx + 1} Total`;
+        summaryRow.children[4].textContent = '0';
+        summaryRow.children[5].textContent = '$0.00';
+        summaryRow.children[6].textContent = '$0.00';
+        summaryRow.children[7].textContent = '$0.00';
+        summaryRow.children[8].textContent = '$0.00';
+        summaryRow.children[9].textContent = '$0.00';
+        const dayRow = dayRows[boundaryIndex];
+        if (dayRow && dayRow.parentNode) {
+          dayRow.parentNode.insertBefore(summaryRow, dayRow.nextSibling);
+        }
+        weekSummaryRows.push(summaryRow);
+      });
+    }
+
+    // Event listeners
+    startDaySelect.addEventListener('change', () => {
+      updateDayNames();
+      updateTotals();
+    });
+
+    // Load previous data and initialize page
+    loadData();
+    updateDayNames();
+    updateTotals();
+
+    // Register service worker when supported
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js').catch(err => {
+          console.error('ServiceWorker registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
